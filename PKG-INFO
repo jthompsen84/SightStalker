@@ -1,0 +1,145 @@
+Metadata-Version: 2.4
+Name: sightstalker
+Version: 0.1.1
+Summary: Modular browser automation toolkit
+Requires-Python: >=3.11
+Requires-Dist: pydantic>=2.7
+Provides-Extra: camoufox
+Requires-Dist: camoufox<0.5.0,>=0.4.11; extra == 'camoufox'
+Description-Content-Type: text/markdown
+
+# SightStalker
+
+## Purpose
+
+SightStalker is a modular, async-first Python toolkit for reliable browser automation
+with strong support for session persistence, profile management, and observability.
+
+It is designed around a clean, extensible architecture:
+- Protocol-based browser engine abstraction
+- Immutable Pydantic domain models
+- Hybrid persistence (SQLAlchemy metadata + JSON browser state)
+- First-class diagnostics (screenshots, tracing, health records)
+- Deterministic interaction simulation
+
+## Authorized-Use Boundary
+
+SightStalker is an authorized browser automation toolkit for QA, operator workflows,
+diagnostics, and controlled automation. It is not a credential-stuffing tool,
+scraping-abuse framework, CAPTCHA bypass system, anti-fraud evasion system, or
+unauthorized access framework.
+
+All use must be authorized by the operator of the target systems.
+
+## Current Status
+
+SightStalker currently includes:
+- contract models and protocols (v0.1.0)
+- Camoufox engine adapter (v0.1.1)
+
+SightStalker does not yet include:
+- session manager
+- profile locking
+- persistence/database
+- artifact manager
+- CLI workflow
+- diagnostics orchestration
+- interaction simulator
+- proxy registry
+- fingerprint registry
+- web UI
+
+The Camoufox adapter implements browser launch, context/page creation,
+navigation, in-memory storage-state conversion, direct-path screenshots and
+tracing, and clean teardown — all behind the accepted engine protocols.
+Persistent profiles, fingerprint mapping, and session lifecycle are
+deferred to later PRs.
+
+## Development Setup
+
+Requires Python ≥ 3.11 and [uv](https://docs.astral.sh/uv/).
+
+```bash
+git clone <repo>
+cd sightstalker
+uv sync --group dev
+```
+
+To use the Camoufox engine adapter, install the optional extra and fetch the
+browser binary:
+
+```bash
+uv sync --extra camoufox
+uv run python -m camoufox fetch
+```
+
+The base package imports cleanly without the camoufox extra; the browser
+binary is only required to actually launch a browser.
+
+## Contract Layer
+
+The public contract surface is organized into three import paths:
+
+```python
+# Domain models
+from sightstalker.models import (
+    BrowserLaunchConfig,
+    SessionRecord,
+    RunRecord,
+    ArtifactRef,
+    # ...
+)
+
+# Engine protocols
+from sightstalker.engines import (
+    BrowserEngine,
+    BrowserRuntime,
+    BrowserContextHandle,
+    PageHandle,
+)
+
+# Redaction utilities
+from sightstalker.security import (
+    redact_mapping,
+    redact_exception,
+    redact_log_record,
+)
+```
+
+## Test Commands
+
+```bash
+# Install dependencies
+uv sync --group dev
+
+# Compile check
+uv run python -m compileall src tests
+
+# Run tests (non-smoke)
+uv run pytest
+
+# Run the optional real-browser smoke test (requires fetched binary)
+uv sync --extra camoufox
+uv run python -m camoufox fetch
+SIGHTSTALKER_BROWSER_SMOKE=1 uv run pytest -m browser_smoke
+
+# Type check
+uv run pyright
+
+# Build package
+uv build
+```
+
+## Architecture
+
+See `docs/architecture/` for the full architecture specification and PR roadmap.
+
+### Core Noun Model
+
+| Noun | Meaning |
+|------|---------|
+| Profile | Persistent browser identity container / user-data directory |
+| Session | Stable logical configuration binding launch/context defaults to a profile |
+| Run | One execution attempt |
+| Context | One browser isolation context created during a run |
+| Artifact | Immutable file output from a run, referenced by metadata and hash |
