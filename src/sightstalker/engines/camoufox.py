@@ -130,7 +130,7 @@ def _build_launch_kwargs(config: BrowserLaunchConfig) -> dict[str, Any]:
     """
     if config.user_data_dir is not None:
         raise ValueError(
-            "Camoufox persistent user_data_dir launch is deferred to SESSION-STATE-1"
+            "Camoufox persistent user_data_dir launch is deferred to a future persistent-profile PR"
         )
     if config.fingerprint is not None:
         raise ValueError(

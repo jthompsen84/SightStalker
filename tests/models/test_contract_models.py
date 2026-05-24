@@ -474,3 +474,12 @@ def test_session_record_is_frozen() -> None:
     )
     with pytest.raises((ValidationError, TypeError)):
         record.name = "mutated"  # type: ignore[misc]
+
+
+def test_package_version_matches_distribution_metadata() -> None:
+    """sightstalker.__version__ must match the installed distribution version."""
+    from importlib.metadata import version
+
+    import sightstalker
+
+    assert sightstalker.__version__ == version("sightstalker")

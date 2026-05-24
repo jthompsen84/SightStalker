@@ -29,7 +29,7 @@ _ADAPTER_FILE = _SRC_ROOT / "engines" / "camoufox.py"
 def test_import_sightstalker() -> None:
     import sightstalker
 
-    assert sightstalker.__version__ == "0.1.1"
+    assert sightstalker.__version__ == "0.3.1"
 
 
 def test_import_models() -> None:

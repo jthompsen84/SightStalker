@@ -1,11 +1,15 @@
 [project]
 name = "sightstalker"
-version = "0.1.1"
+version = "0.3.1"
 description = "Modular browser automation toolkit"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.7",
+    "filelock>=3,<4",
+    "SQLAlchemy[asyncio]>=2,<3",
+    "alembic>=1.13,<2",
+    "aiosqlite>=0.19,<1",
 ]
 
 [project.optional-dependencies]

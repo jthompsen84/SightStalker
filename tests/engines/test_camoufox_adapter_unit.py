@@ -331,7 +331,7 @@ async def test_proxy_maps_with_secret_unwrapped_only_in_native_kwarg() -> None:
 async def test_user_data_dir_raises_deferred_persistence_error() -> None:
     engine = CamoufoxEngine(async_camoufox_factory=FakeAsyncCamoufoxFactory())
     config = BrowserLaunchConfig(user_data_dir=Path("/tmp/profile"))
-    with pytest.raises(ValueError, match="SESSION-STATE-1"):
+    with pytest.raises(ValueError, match="persistent-profile"):
         await engine.launch(config)
 
 

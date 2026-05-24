@@ -1,9 +1,13 @@
 Metadata-Version: 2.4
 Name: sightstalker
-Version: 0.1.1
+Version: 0.3.0
 Summary: Modular browser automation toolkit
 Requires-Python: >=3.11
+Requires-Dist: aiosqlite<1,>=0.19
+Requires-Dist: alembic<2,>=1.13
+Requires-Dist: filelock<4,>=3
 Requires-Dist: pydantic>=2.7
+Requires-Dist: sqlalchemy[asyncio]<3,>=2
 Provides-Extra: camoufox
 Requires-Dist: camoufox<0.5.0,>=0.4.11; extra == 'camoufox'
 Description-Content-Type: text/markdown
@@ -36,24 +40,115 @@ All use must be authorized by the operator of the target systems.
 SightStalker currently includes:
 - contract models and protocols (v0.1.0)
 - Camoufox engine adapter (v0.1.1)
+- session-state lifecycle layer (v0.2.0): profile/session/run/context
+  orchestration, profile file locking, and immutable per-run storage-state
+  snapshots
+- general artifact manager (v0.2.1): reusable safe-path, no-overwrite,
+  hashing, MIME-inference, and read/verify file handling with `ArtifactRef`
+  provenance
+- SQL metadata persistence (v0.3.0): async SQLAlchemy ORM models, an Alembic
+  baseline migration, and repository APIs for profiles, sessions, runs,
+  contexts, artifacts, and health records. SightStalker can now persist
+  queryable metadata for those objects.
 
 SightStalker does not yet include:
-- session manager
-- profile locking
-- persistence/database
-- artifact manager
 - CLI workflow
 - diagnostics orchestration
 - interaction simulator
+- profile registry
 - proxy registry
 - fingerprint registry
-- web UI
+- persistent browser user-data-dir contexts
+- web UI/API
 
 The Camoufox adapter implements browser launch, context/page creation,
 navigation, in-memory storage-state conversion, direct-path screenshots and
 tracing, and clean teardown — all behind the accepted engine protocols.
-Persistent profiles, fingerprint mapping, and session lifecycle are
-deferred to later PRs.
+
+The session-state layer (`sightstalker.sessions`) drives one run at a time
+against a profile: it enforces single-active-run profile locking, captures
+immutable `storage_state.initial.json` / `storage_state.final.json` snapshots
+per run, carries a session's last final state forward as the next run's initial
+state, and never writes a mutable shared cookie file. It depends only on the
+contract models and the engine protocols — not on Camoufox, persistence, the
+CLI, or logging — so it imports and tests without a browser installed.
+
+The artifact layer (`sightstalker.artifacts`) generalizes the hardened
+storage-state file behavior into a reusable `ArtifactManager`. It resolves
+relative artifact paths under a trusted data directory with reject-all-symlink
+containment, writes with no-overwrite exclusive creation, computes SHA-256 and
+size from the bytes on disk, infers a type-compatible MIME, and returns an
+`ArtifactRef`. Reads return the same buffer they verify. The package depends
+only on the contract models and the neutral `sightstalker.ids` module — never on
+`sightstalker.sessions` — so there is no dependency cycle. `BrowserStateStore`
+now delegates its file work to this manager while preserving its public API,
+file names, byte format, and `SessionStateError` contract unchanged.
+
+This PR adds no CLI workflow, diagnostics orchestration, interaction
+simulator, proxy/fingerprint registries, persistent browser user-data-dir
+contexts, or web UI/API. A neutral usage example is writing a
+local `run_log` text file:
+
+```python
+from pathlib import Path
+from sightstalker.artifacts import ArtifactManager, ArtifactPaths
+
+paths = ArtifactPaths(Path(".data"))
+paths.ensure_data_dir()
+manager = ArtifactManager(paths)
+ref = manager.write_text(
+    relative_path=Path("runs/example/run_log.txt"),
+    artifact_type="run_log",
+    text="run started\nrun finished\n",
+)
+assert manager.read_text(ref) == "run started\nrun finished\n"
+```
+
+**Artifact files may contain sensitive data** — cookies, local storage,
+screenshots, traces, request/response headers, or tokens. The data directory
+must be treated as sensitive: keep it out of version control and shared
+backups. Raw payloads are never logged, printed, or embedded in exception
+strings, and exceptions never expose absolute data-directory paths.
+
+### SQL metadata persistence (v0.3.0)
+
+The persistence layer (`sightstalker.persistence`) records queryable metadata
+for profiles, sessions, runs, contexts, artifacts, and health records in an
+async SQLAlchemy database with an Alembic baseline migration.
+
+**The database stores metadata only.** Raw browser state, cookies,
+screenshots, traces, and artifact payloads remain in artifact files and must
+not be stored in SQL. Secret-bearing session configuration (proxy passwords,
+authorization headers, environment secrets, local path material) is rejected
+rather than redacted-and-stored, and arbitrary run metadata and health reasons
+are sanitized through the shared redaction utilities before storage.
+
+The default development database URL should use `sqlite+aiosqlite`. Production
+PostgreSQL support is deferred until an explicit deployment/database PR.
+
+```python
+from pathlib import Path
+from sightstalker.persistence import (
+    PersistenceConfig,
+    create_async_engine as create_sightstalker_engine,
+    create_async_session_factory,
+)
+
+config = PersistenceConfig(
+    database_url="sqlite+aiosqlite:///.data/sightstalker.db",
+    data_dir=Path(".data"),
+)
+engine = create_sightstalker_engine(config)
+session_factory = create_async_session_factory(engine)
+```
+
+Importing `sightstalker.persistence` pulls in SQLAlchemy and Alembic; importing
+the rest of the package does not.
+
+Persistent browser profiles (a real browser `user_data_dir`) and fingerprint
+mapping remain deferred to later PRs; launching Camoufox with a persistent
+`user_data_dir` is intentionally rejected for now.
+
 
 ## Development Setup
 
@@ -138,8 +233,18 @@ See `docs/architecture/` for the full architecture specification and PR roadmap.
 
 | Noun | Meaning |
 |------|---------|
-| Profile | Persistent browser identity container / user-data directory |
+| Profile | SightStalker-owned state container for one browser identity (locks + per-run storage-state). As of v0.2.0 this is **not** a browser `user_data_dir`; persistent browser profiles are deferred. |
 | Session | Stable logical configuration binding launch/context defaults to a profile |
 | Run | One execution attempt |
 | Context | One browser isolation context created during a run |
 | Artifact | Immutable file output from a run, referenced by metadata and hash |
+
+### Storage-State Sensitivity
+
+Per-run `storage_state.initial.json` and `storage_state.final.json` files can
+contain cookies, tokens, and other authenticated browser state. They are
+written only under the configured data directory with best-effort `0o600`
+permissions and immutable, no-overwrite semantics, and their raw contents are
+never copied into log lines, error messages, or (in later PRs) database rows —
+only references and hashes are recorded. Treat the data directory as sensitive
+and exclude it from version control and shared backups.
