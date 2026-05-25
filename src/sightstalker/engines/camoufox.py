@@ -190,6 +190,18 @@ def _build_context_kwargs(config: BrowserContextConfig) -> dict[str, Any]:
     if config.timezone_id is not None:
         kwargs["timezone_id"] = config.timezone_id
 
+    # Generic primitive context fields newly supported in ENVIRONMENT-1. These
+    # are resolved values only; environment_profile_id (provenance) and any
+    # EnvironmentProfile/NavigatorProfile object are intentionally NOT mapped.
+    if config.user_agent is not None:
+        kwargs["user_agent"] = config.user_agent
+
+    if config.color_scheme is not None:
+        kwargs["color_scheme"] = config.color_scheme
+
+    if config.reduced_motion is not None:
+        kwargs["reduced_motion"] = config.reduced_motion
+
     if config.extra_http_headers:
         kwargs["extra_http_headers"] = dict(config.extra_http_headers)
 

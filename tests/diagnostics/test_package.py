@@ -6,8 +6,8 @@ import sightstalker
 from sightstalker import diagnostics
 
 
-def test_version_is_0_3_1() -> None:
-    assert sightstalker.__version__ == "0.3.1"
+def test_version_is_0_4_5() -> None:
+    assert sightstalker.__version__ == "0.4.5"
 
 
 def test_public_surface_exports() -> None:

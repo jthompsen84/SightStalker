@@ -10,7 +10,6 @@ It is designed around a clean, extensible architecture:
 - Immutable Pydantic domain models
 - Hybrid persistence (SQLAlchemy metadata + JSON browser state)
 - First-class diagnostics (screenshots, tracing, health records)
-- Deterministic interaction simulation
 
 ## Authorized-Use Boundary
 
@@ -41,6 +40,56 @@ SightStalker currently includes:
   artifact manager, and optional injected repository-like persistence. These
   services observe already-open browser handles and produce artifacts/metadata;
   they never launch browsers, navigate, interact, retry, or recover.
+- local operator CLI (v0.4.0): a Typer command surface
+  (`sightstalker.cli.main:app`, installed as the `sightstalker` console script)
+  over the accepted services — `version`, `config show`, `db init`/`upgrade`,
+  `profile`/`session` create/list/archive, `run open`, and
+  `diag screenshot`/`trace`/`console`. Commands resolve config, run exactly one
+  navigation per browser run, persist run/context/artifact metadata in a single
+  transaction, and emit either human (Rich) output or a `--json` envelope. The
+  CLI is local-only: no web server, API, daemon, scheduler, interaction
+  simulation, or retry orchestration, and it reaches the Camoufox engine only
+  lazily through the accepted launcher.
+- resilience taxonomy, timeout policy, retry helpers, and redacted logging
+  policy (v0.4.1): a project-wide failure taxonomy (`sightstalker.resilience`)
+  with sanitized exceptions, an `OperatorError` model, an exception classifier
+  that preserves the CLI's public error `type` labels while adding `kind`/
+  `recoverability` taxonomy fields, a model-level `TimeoutPolicy`, conservative
+  operation-safety-gated retry helpers (default: no retries), and lazily
+  configured, redacted loguru logging. No browser/session/artifact/persistence
+  behavior changed and no retries are applied to existing operations.
+- ops orchestration boundary (v0.4.2): managed run orchestration now lives in
+  `sightstalker.ops`. The CLI delegates managed execution to this package
+  instead of owning application-level managed-run composition directly. This is
+  a behavior-preserving architecture boundary change; no CLI behavior, browser
+  behavior, persistence, or public error labels changed.
+- behavior/environment boundary specification (v0.4.3): documents the future
+  architecture for opt-in deterministic interaction behavior, environment
+  profile resolution, and context initialization. This is a guardrail/spec PR:
+  no interaction simulator, environment package, context resolver, CLI behavior
+  flags, or browser behavior changes are implemented in v0.4.3. See
+  `docs/architecture/behavior-boundary.md`.
+- environment profile contracts and pre-launch config resolution (v0.4.4):
+  adds the `sightstalker.environment` package — `EnvironmentProfile` /
+  `NavigatorProfile` contracts, programmatic null/in-memory stores, selectors,
+  a default applicator, and a `ContextConfigResolver` that produces immutable
+  effective `BrowserLaunchConfig` / `BrowserContextConfig` before engine launch
+  (precedence: run override > selected environment profile > session default >
+  package default), composed optionally through `ops`. No CLI environment-profile
+  opt-in flags, file-backed custom profile stores, persistent registry, or
+  interaction simulator are implemented yet. No fingerprint generation, browser-
+  fingerprint randomization, proxy rotation, or anti-detection/evasion behavior
+  is implemented.
+- context initializer seam (v0.4.5): adds `ContextInitializer`,
+  `ContextInitializationScope`, and `ContextInitializerChain` as a trusted
+  post-context, pre-page ops lifecycle hook. The chain is optional, ordered, and
+  a no-op by default; it runs after browser context creation and before plan
+  execution. It is a trusted programmatic seam; caller-supplied initializers run
+  as trusted code and are not sandboxed. No built-in concrete context initializer is included yet, and no
+  navigator/script injection, automatic context mutation, interaction simulator,
+  CLI initializer flags, or file/DB/remote initializer loading is implemented
+  yet. No fingerprint generation, proxy rotation, or anti-detection/evasion
+  behavior is implemented.
 
 > **Diagnostic artifacts are sensitive by default.** They may contain page
 > content, URLs, headers, cookies, tokens, screenshots, traces, console output,
@@ -48,11 +97,10 @@ SightStalker currently includes:
 > SightStalker data directory as sensitive material.
 
 SightStalker does not yet include:
-- CLI workflow
 - interaction simulator
 - profile registry
 - proxy registry
-- fingerprint registry
+- fingerprint/environment registry
 - persistent browser user-data-dir contexts
 - web UI/API
 
@@ -143,6 +191,82 @@ the rest of the package does not.
 Persistent browser profiles (a real browser `user_data_dir`) and fingerprint
 mapping remain deferred to later PRs; launching Camoufox with a persistent
 `user_data_dir` is intentionally rejected for now.
+
+### Local operator CLI (v0.4.0)
+
+The CLI (`sightstalker.cli`) is a thin local operator surface over the accepted
+services. It is installed as the `sightstalker` console script and can also be
+run as `python -m sightstalker.cli.main`.
+
+```bash
+# Inspect version and resolved (redacted) configuration
+sightstalker version --json
+sightstalker config show
+
+# Initialize the metadata database (idempotent)
+sightstalker db init
+
+# Create a profile and a session, then list them
+sightstalker profile create --name default
+sightstalker session create --name default --profile-id prof_xxxxxxxxxxxx
+
+# Open one run and capture passive diagnostics against neutral targets
+sightstalker run open --session-id sess_xxxxxxxxxxxx --url "about:blank"
+sightstalker diag screenshot --session-id sess_xxxxxxxxxxxx \
+  --url "data:text/html,<title>ok</title>" --json
+```
+
+Every command accepts `--data-dir`, `--database-url`, `--json`, and `--verbose`.
+With `--json` the command prints exactly one JSON envelope
+(`{"ok": ..., "command": ..., "data": ..., "warnings": [...], "errors": [...]}`)
+to stdout and nothing to stderr on success. Exit codes are stable: `0` success,
+`2` usage, `3` persistence, `4` browser/runtime, `5` diagnostic, `6` a refused
+unsafe URL or configuration.
+
+> **The CLI does not filter or restrict navigation targets (no SSRF
+> protection).** `run open` and the `diag` commands navigate to whatever URL you
+> pass, including internal/loopback/metadata-service addresses. There is no
+> allowlist, no private-range blocking, and no redirect inspection. Only point
+> these commands at targets you are authorized to access. The raw URL is used
+> in-memory for a single navigation; a redacted form is what gets persisted and
+> printed. Examples in this project use only neutral targets such as
+> `about:blank`, `data:text/html,...`, and `example.com`.
+
+The CLI never imports a browser package at module load: `version`, `config`,
+`db`, `profile`, and `session` run without touching Camoufox, and the engine is
+resolved lazily only when `run`/`diag` actually launch a browser. There is no
+web, API, daemon, scheduler, interaction-simulation, or retry surface.
+
+
+## Resilience and errors
+
+SightStalker classifies operator-facing failures into usage, configuration,
+security refusal, browser runtime, persistence, artifact, diagnostic, timeout,
+integrity, external, and internal categories. CLI JSON output preserves the
+existing public error `type` labels and adds taxonomy fields such as `kind`,
+`recoverability`, and `exit_code`. Retry helpers exist but default to no
+retries and are not automatically applied to browser navigation, artifact
+writes, or database mutations.
+
+The taxonomy, timeout policy, retry helpers, and redacted logging live in
+`sightstalker.resilience`. loguru is configured only when the CLI runs a
+command (never at import), all log sinks are redacted and traceback-free, and
+retry helpers refuse to retry operations declared `non_idempotent` regardless
+of policy.
+
+
+## Ops orchestration boundary
+
+As of v0.4.2, managed run orchestration lives in `sightstalker.ops`.
+The CLI delegates to this package instead of owning application-level managed-run
+composition directly. This is a behavior-preserving architecture boundary
+change that prepares the project for future environment-profile resolution,
+context initialization hooks, and opt-in deterministic interaction simulation.
+
+These future hooks are not implemented in v0.4.2. This release only moves the
+managed-run orchestration seam. The boundary prepares for future
+ContextConfigResolver, ContextInitializer, and InteractionSimulator injection
+points.
 
 
 ## Development Setup

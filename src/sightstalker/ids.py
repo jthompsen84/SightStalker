@@ -23,7 +23,13 @@ from __future__ import annotations
 import re
 import secrets
 
-from sightstalker.models import ArtifactId, ContextId, RunId
+from sightstalker.models import (
+    ArtifactId,
+    ContextId,
+    ProfileId,
+    RunId,
+    SessionId,
+)
 
 _SAFE_PREFIX_RE = re.compile(r"[^A-Za-z0-9_-]+")
 
@@ -48,6 +54,26 @@ def _safe_prefix(prefix: str, *, fallback: str = _DEFAULT_ARTIFACT_PREFIX) -> st
     if not cleaned:
         return fallback
     return cleaned[:16]
+
+
+def new_profile_id() -> ProfileId:
+    """Generate a fresh ``ProfileId`` of the form ``prof_auto_<hex>``.
+
+    Added for CLI-RUNNER-1 so the CLI can mint profile identities without
+    importing the session layer. The result satisfies the accepted
+    ``ProfileId`` regex contract.
+    """
+    return f"prof_auto_{secrets.token_hex(8)}"
+
+
+def new_session_id() -> SessionId:
+    """Generate a fresh ``SessionId`` of the form ``sess_auto_<hex>``.
+
+    Added for CLI-RUNNER-1 so the CLI can mint session identities without
+    importing the session layer. The result satisfies the accepted
+    ``SessionId`` regex contract.
+    """
+    return f"sess_auto_{secrets.token_hex(8)}"
 
 
 def new_run_id() -> RunId:

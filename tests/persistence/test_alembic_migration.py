@@ -86,13 +86,27 @@ def test_migration_does_not_require_camoufox(tmp_path: Path) -> None:
 
 
 def test_migration_does_not_require_web_cli(tmp_path: Path) -> None:
+    import subprocess
     import sys
 
     db = tmp_path / "noweb.db"
-    cfg = make_alembic_config(f"sqlite+aiosqlite:///{db}")
-    command.upgrade(cfg, "head")
-    for mod in ("typer", "fastapi", "uvicorn", "rich", "loguru"):
-        assert mod not in sys.modules
+    # sys.modules is process-global; run the migration in a fresh interpreter so
+    # the assertion is not polluted by CLI tests that import typer/rich.
+    probe = (
+        "import sys;"
+        "from alembic import command;"
+        "from sightstalker.persistence import make_alembic_config;"
+        f"cfg=make_alembic_config('sqlite+aiosqlite:///{db}');"
+        "command.upgrade(cfg,'head');"
+        "bad=[m for m in ('typer','fastapi','uvicorn','rich','loguru')"
+        " if m in sys.modules];"
+        "print(','.join(bad));"
+        "sys.exit(1 if bad else 0)"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_restrictive_fk_after_migration(tmp_path: Path) -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 
 from sightstalker.models.base import JsonObject, ToolkitModel
 from sightstalker.models.identifiers import (
@@ -24,6 +24,23 @@ ViewportPreset = Literal[
     "mobile_390x844",
     "custom",
 ]
+
+
+def validate_optional_text(value: str | None, *, field_name: str) -> str | None:
+    """Shared validator for identity-adjacent optional text fields.
+
+    Used for ``user_agent`` (and reused by environment override/profile models)
+    so the rule is identical everywhere: ``None`` is allowed, but a present
+    value must be non-empty after stripping and must contain no NUL/control
+    characters.
+    """
+    if value is None:
+        return None
+    if not value.strip():
+        raise ValueError(f"{field_name} must not be empty")
+    if any(ord(ch) < 32 or ch == "\x7f" for ch in value):
+        raise ValueError(f"{field_name} must not contain control characters")
+    return value
 
 
 class ViewportConfig(ToolkitModel):
@@ -126,6 +143,10 @@ class BrowserContextConfig(ToolkitModel):
     viewport: ViewportConfig | None = None
     locale: str | None = None
     timezone_id: str | None = None
+    user_agent: str | None = Field(default=None, repr=False)
+    color_scheme: Literal["light", "dark", "no-preference"] | None = None
+    reduced_motion: Literal["reduce", "no-preference"] | None = None
+    environment_profile_id: FingerprintProfileId | None = None
     accept_downloads: bool = False
     java_script_enabled: bool = True
     ignore_https_errors: bool = False
@@ -135,6 +156,11 @@ class BrowserContextConfig(ToolkitModel):
     permissions: tuple[str, ...] = ()
     record_har_path: Path | None = None
     record_video_dir: Path | None = None
+
+    @field_validator("user_agent")
+    @classmethod
+    def _validate_user_agent(cls, value: str | None) -> str | None:
+        return validate_optional_text(value, field_name="user_agent")
 
 
 # ---------------------------------------------------------------------------

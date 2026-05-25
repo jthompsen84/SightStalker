@@ -157,4 +157,4 @@ def test_installed_version_is_correct(
         text=True,
         check=True,
     )
-    assert result.stdout.strip() == "0.3.1"
+    assert result.stdout.strip() == "0.4.5"

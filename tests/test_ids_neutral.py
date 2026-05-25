@@ -91,3 +91,62 @@ def test_safe_artifact_prefix_public_helper() -> None:
     assert neutral_ids.safe_artifact_prefix("") == "artifact"
     assert neutral_ids.safe_artifact_prefix("", fallback="state") == "state"
     assert neutral_ids.safe_artifact_prefix("a/b c") == "a_b_c"
+
+
+def test_new_profile_id_valid() -> None:
+    pid = neutral_ids.new_profile_id()
+    assert pid.startswith("prof_")
+    assert _ID_RE.match(pid[len("prof_") - 1 :]) or _ID_RE.match(pid)
+
+
+def test_new_session_id_valid() -> None:
+    sid = neutral_ids.new_session_id()
+    assert sid.startswith("sess_")
+    assert _ID_RE.match(sid)
+
+
+def test_new_profile_and_session_ids_match_model_patterns() -> None:
+    from pydantic import TypeAdapter
+
+    from sightstalker.models import ProfileId, SessionId
+
+    TypeAdapter(ProfileId).validate_python(neutral_ids.new_profile_id())
+    TypeAdapter(SessionId).validate_python(neutral_ids.new_session_id())
+
+
+def test_new_profile_and_session_ids_unique() -> None:
+    profiles = {neutral_ids.new_profile_id() for _ in range(50)}
+    sessions = {neutral_ids.new_session_id() for _ in range(50)}
+    assert len(profiles) == 50
+    assert len(sessions) == 50
+
+
+# ---------------------------------------------------------------------------
+# CLI-RUNNER-1: neutral profile/session ID helpers
+# ---------------------------------------------------------------------------
+
+
+def test_neutral_new_profile_id_valid() -> None:
+    pid = neutral_ids.new_profile_id()
+    assert pid.startswith("prof_")
+    assert _ID_RE.match(pid[len("prof_"):])
+    # Conforms to the accepted ProfileId pattern at the model boundary.
+    from sightstalker.sessions.ids import validate_profile_id
+
+    assert validate_profile_id(pid) == pid
+
+
+def test_neutral_new_session_id_valid() -> None:
+    sid = neutral_ids.new_session_id()
+    assert sid.startswith("sess_")
+    assert _ID_RE.match(sid[len("sess_"):])
+    from sightstalker.sessions.ids import validate_session_id
+
+    assert validate_session_id(sid) == sid
+
+
+def test_neutral_profile_and_session_ids_unique() -> None:
+    profiles = {neutral_ids.new_profile_id() for _ in range(50)}
+    sessions = {neutral_ids.new_session_id() for _ in range(50)}
+    assert len(profiles) == 50
+    assert len(sessions) == 50

@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import TypeAdapter
@@ -377,6 +377,10 @@ def persistable_session_config(config: SessionConfig) -> JsonObject:
             "viewport": viewport_projection,
             "locale": context.locale,
             "timezone_id": context.timezone_id,
+            "user_agent": context.user_agent,
+            "color_scheme": context.color_scheme,
+            "reduced_motion": context.reduced_motion,
+            "environment_profile_id": context.environment_profile_id,
             "accept_downloads": context.accept_downloads,
             "java_script_enabled": context.java_script_enabled,
             "ignore_https_errors": context.ignore_https_errors,
@@ -528,6 +532,12 @@ def _session_config_from_projection(projection: JsonObject) -> SessionConfig:
         viewport=viewport,
         locale=_opt_str(context_proj.get("locale")),
         timezone_id=_opt_str(context_proj.get("timezone_id")),
+        user_agent=_opt_str(context_proj.get("user_agent")),
+        color_scheme=_opt_color_scheme(context_proj.get("color_scheme")),
+        reduced_motion=_opt_reduced_motion(context_proj.get("reduced_motion")),
+        environment_profile_id=_opt_str(
+            context_proj.get("environment_profile_id")
+        ),
         accept_downloads=bool(context_proj.get("accept_downloads", False)),
         java_script_enabled=bool(context_proj.get("java_script_enabled", True)),
         ignore_https_errors=bool(context_proj.get("ignore_https_errors", False)),
@@ -563,6 +573,28 @@ def _session_config_from_projection(projection: JsonObject) -> SessionConfig:
 
 def _opt_str(value: Any) -> str | None:
     return None if value is None else str(value)
+
+
+def _opt_color_scheme(
+    value: Any,
+) -> Literal["light", "dark", "no-preference"] | None:
+    if value is None:
+        return None
+    text = str(value)
+    if text in ("light", "dark", "no-preference"):
+        return text  # type: ignore[return-value]
+    return None
+
+
+def _opt_reduced_motion(
+    value: Any,
+) -> Literal["reduce", "no-preference"] | None:
+    if value is None:
+        return None
+    text = str(value)
+    if text in ("reduce", "no-preference"):
+        return text  # type: ignore[return-value]
+    return None
 
 
 def _as_list(value: Any) -> list[Any]:
