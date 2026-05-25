@@ -6,17 +6,19 @@ SightStalker is a modular, async-first Python toolkit for reliable browser autom
 with strong support for session persistence, profile management, and observability.
 
 It is designed around a clean, extensible architecture:
-- Protocol-based browser engine abstraction
+- Protocol-based browser engine abstraction (starting with Camoufox)
 - Immutable Pydantic domain models
 - Hybrid persistence (SQLAlchemy metadata + JSON browser state)
+- Environment profile management and context configuration
+- Deterministic and nondeterministic interaction simulation (timing distributions, mouse/keyboard strategies, simulator)
+- Ops orchestration layer for clean composition
+- Trusted post-context initializer seam
 - First-class diagnostics (screenshots, tracing, health records)
 
 ## Authorized-Use Boundary
 
 SightStalker is an authorized browser automation toolkit for QA, operator workflows,
-diagnostics, and controlled automation. It is not a credential-stuffing tool,
-scraping-abuse framework, CAPTCHA bypass system, anti-fraud evasion system, or
-unauthorized access framework.
+diagnostics, and controlled automation.
 
 All use must be authorized by the operator of the target systems.
 
