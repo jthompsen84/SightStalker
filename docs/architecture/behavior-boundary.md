@@ -65,6 +65,66 @@ As of `v0.4.3`, the following are true:
 - The names in the status matrix below are **documentation-only future
   concepts** and are intentionally not importable production symbols.
 
+  ---
+
+# Behavior and Interaction Boundary Doctrine
+
+This document defines the architectural boundaries for interaction behavior and environment profiles in SightStalker.
+
+## Core Principles
+
+- Interaction behavior is **opt-in** and disabled by default.
+- Deterministic behavior requires an explicit seed when using seeded timing strategies.
+- Interaction profiles and environment profiles are distinct concepts owned by separate packages.
+- Engines remain narrow adapters responsible only for launch and context creation.
+- Ops serves as the composition root for resolvers, initializers, and run execution.
+
+## Package Responsibilities
+
+### sightstalker.interaction
+- Owns data-only interaction profiles, timing distributions, movement strategies, and the simulator.
+- Works against the narrow `PageInteractionTarget` protocol.
+- Remains browser-agnostic (no imports of Camoufox, Playwright, or engine adapters).
+- Provides deterministic, testable interaction primitives.
+
+### sightstalker.environment
+- Owns environment/fingerprint profile definitions and resolution into `BrowserContextConfig`.
+- Runs before engine launch.
+
+### sightstalker.ops
+- Composition layer that wires environment resolution and (optionally) interaction simulation into run execution.
+- Does not own the implementation of interaction or environment logic.
+
+### sightstalker.engines
+- Browser launch and context creation only.
+- Must not import interaction or environment implementation modules.
+
+## PageInteractionTarget
+
+The `PageInteractionTarget` protocol is temporarily narrow for `INTERACTION-1` and focused on keyboard, mouse, and timeout operations. This keeps the interaction package browser-agnostic and easily testable with fake targets. future extensions should allow deeper interaction and jntegration in a browser agnostic manner (sslectors, targets, etc.).
+
+Advanced capabilities (selectors, navigation helpers, storage access, etc.) can be added in future extensions through controlled mechanisms such as `ContextInitializer` or new targeted protocols.
+
+## Future Extensibility
+
+The architecture is designed to support future enhancements including:
+- More sophisticated movement and timing strategies
+- Custom profile stores and registries
+- Integration with external services
+- Selector/locator helpers (as extensions)
+
+All such extensions must go through the defined seams (`ops`, `ContextInitializer`, strategy patterns) and maintain clean boundaries.
+
+## Guardrails
+
+Boundary tests enforce:
+- `engines` does not import `interaction` or `environment` implementation modules
+- `interaction` package remains browser-agnostic
+- `cli` does not directly construct simulators
+- Clear separation of concerns between packages
+
+The simulator is a configurable, deterministic interaction library only. Future work may extend these primitives, but such capabilities are out of scope for `INTERACTION-1`.
+
 ## 3. Current-vs-future status matrix
 
 | Concept | v0.4.3 Status | Future Owner | First Allowed PR |
@@ -270,9 +330,6 @@ Each guard checker carries a synthetic self-test proving it fails when violated.
 - No CLI activation flags in v0.4.3.
 - No browser behavior, engine protocol, session lifecycle, RunSurface, or
   persistence schema change in v0.4.3.
-- No stealth, evasion, CAPTCHA-solving, anti-fraud bypass, fingerprint
-  generation, proxy rotation, or scraping-abuse capability. SightStalker is an
-  authorized-use automation toolkit; these are explicit non-goals, not features.
 ```
 
 ## 16. Downstream projected PR sequence
